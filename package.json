@@ -1,6 +1,6 @@
 {
   "name": "@node2flow/sqlite-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server for SQLite databases — query, manage schema, indexes, and optimize through 15 tools",
   "keywords": [
     "sqlite",
@@ -21,6 +21,7 @@
   },
   "type": "module",
   "main": "dist/index.js",
+  "module": "./src/index.ts",
   "types": "dist/index.d.ts",
   "bin": {
     "sqlite-mcp": "dist/index.js"

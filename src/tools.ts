@@ -115,7 +115,13 @@ export const TOOLS: MCPToolDefinition[] = [
     },
     inputSchema: {
       type: 'object',
-      properties: {},
+      properties: {
+        _fields: {
+          type: 'string',
+          description:
+            'Comma-separated list of fields to return (e.g., "name,type,rowCount"). Leave empty for all fields.',
+        },
+      },
     },
   },
   {
@@ -425,7 +431,13 @@ export const TOOLS: MCPToolDefinition[] = [
     },
     inputSchema: {
       type: 'object',
-      properties: {},
+      properties: {
+        _fields: {
+          type: 'string',
+          description:
+            'Comma-separated list of fields to return (e.g., "path,size,tables"). Leave empty for all fields.',
+        },
+      },
     },
   },
   {
@@ -441,7 +453,13 @@ export const TOOLS: MCPToolDefinition[] = [
     },
     inputSchema: {
       type: 'object',
-      properties: {},
+      properties: {
+        _fields: {
+          type: 'string',
+          description:
+            'Comma-separated list of fields to return (e.g., "sizeBefore,sizeAfter"). Leave empty for all fields.',
+        },
+      },
     },
   },
   {
@@ -457,7 +475,13 @@ export const TOOLS: MCPToolDefinition[] = [
     },
     inputSchema: {
       type: 'object',
-      properties: {},
+      properties: {
+        _fields: {
+          type: 'string',
+          description:
+            'Comma-separated list of fields to return (e.g., "ok,errors"). Leave empty for all fields.',
+        },
+      },
     },
   },
 ];
