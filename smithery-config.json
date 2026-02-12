@@ -1,0 +1,15 @@
+{
+  "type": "object",
+  "required": ["SQLITE_DB_PATH"],
+  "properties": {
+    "SQLITE_DB_PATH": {
+      "type": "string",
+      "description": "Path to SQLite database file (creates if not exists)"
+    },
+    "SQLITE_TIMEOUT": {
+      "type": "number",
+      "default": 5000,
+      "description": "Database busy timeout in milliseconds (default: 5000)"
+    }
+  }
+}

@@ -1,0 +1,52 @@
+{
+  "name": "@node2flow/sqlite-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for SQLite databases — query, manage schema, indexes, and optimize through 15 tools",
+  "keywords": [
+    "sqlite",
+    "mcp",
+    "model-context-protocol",
+    "database",
+    "sql",
+    "ai",
+    "claude",
+    "cursor"
+  ],
+  "author": "Node2Flow <node2flow@gmail.com>",
+  "license": "MIT",
+  "homepage": "https://github.com/node2flow-th/sqlite-mcp-community",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/node2flow-th/sqlite-mcp-community.git"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "sqlite-mcp": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "better-sqlite3": "^11.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

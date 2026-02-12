@@ -1,0 +1,4 @@
+src/
+tsconfig.json
+smithery-config.json
+.gitignore

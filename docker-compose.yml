@@ -1,0 +1,13 @@
+services:
+  sqlite-mcp-community:
+    build: .
+    container_name: sqlite-mcp-community
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3025:3000"
+    mem_limit: 512m
+    mem_reservation: 256m
+    environment:
+      - SQLITE_DB_PATH=/data/database.db
+    volumes:
+      - ./data:/data
