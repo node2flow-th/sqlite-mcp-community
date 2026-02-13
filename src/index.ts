@@ -2,13 +2,16 @@
 /**
  * SQLite MCP Server
  *
- * Community edition — connects directly to a local SQLite database.
+ * Community edition — connects to local SQLite files or remote Turso/libSQL databases.
  *
- * Usage (stdio - for Claude Desktop / Cursor / VS Code):
+ * Usage (local - stdio):
  *   SQLITE_DB_PATH=/path/to/database.db npx @node2flow/sqlite-mcp
  *
+ * Usage (remote - stdio):
+ *   SQLITE_DB_URL=libsql://db-name.turso.io SQLITE_AUTH_TOKEN=xxx npx @node2flow/sqlite-mcp
+ *
  * Usage (HTTP - Streamable HTTP transport):
- *   SQLITE_DB_PATH=/path/to/database.db npx @node2flow/sqlite-mcp --http
+ *   SQLITE_DB_URL=libsql://... SQLITE_AUTH_TOKEN=xxx npx @node2flow/sqlite-mcp --http
  */
 
 import { randomUUID } from 'node:crypto';
@@ -23,14 +26,26 @@ import { createServer } from './server.js';
 import { TOOLS } from './tools.js';
 
 function getConfig() {
+  const url = process.env.SQLITE_DB_URL;
   const dbPath = process.env.SQLITE_DB_PATH;
-  if (!dbPath) return null;
-  return {
-    dbPath,
-    timeout: process.env.SQLITE_TIMEOUT
-      ? parseInt(process.env.SQLITE_TIMEOUT, 10)
-      : undefined,
-  };
+
+  if (url) {
+    return {
+      url,
+      authToken: process.env.SQLITE_AUTH_TOKEN,
+    };
+  }
+
+  if (dbPath) {
+    return {
+      dbPath,
+      timeout: process.env.SQLITE_TIMEOUT
+        ? parseInt(process.env.SQLITE_TIMEOUT, 10)
+        : undefined,
+    };
+  }
+
+  return null;
 }
 
 async function startStdio() {
@@ -39,8 +54,9 @@ async function startStdio() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
+  const mode = config?.url ? `remote: ${config.url}` : config?.dbPath ? `local: ${config.dbPath}` : '(not configured yet)';
   console.error('SQLite MCP Server running on stdio');
-  console.error(`Database: ${config ? config.dbPath : '(not configured yet)'}`);
+  console.error(`Database: ${mode}`);
   console.error(`Tools available: ${TOOLS.length}`);
   console.error('Ready for MCP client\n');
 }
@@ -52,6 +68,15 @@ async function startHttp() {
   const transports: Record<string, StreamableHTTPServerTransport> = {};
 
   app.post('/mcp', async (req: any, res: any) => {
+    // Accept config from query params
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const qUrl = url.searchParams.get('SQLITE_DB_URL');
+    const qAuthToken = url.searchParams.get('SQLITE_AUTH_TOKEN');
+    const qDbPath = url.searchParams.get('SQLITE_DB_PATH');
+    if (qUrl) process.env.SQLITE_DB_URL = qUrl;
+    if (qAuthToken) process.env.SQLITE_AUTH_TOKEN = qAuthToken;
+    if (qDbPath) process.env.SQLITE_DB_PATH = qDbPath;
+
     const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
     try {
@@ -125,7 +150,7 @@ async function startHttp() {
   app.get('/', (_req: any, res: any) => {
     res.json({
       name: 'sqlite-mcp',
-      version: '1.0.0',
+      version: '2.0.0',
       status: 'ok',
       tools: TOOLS.length,
       transport: 'streamable-http',
@@ -134,11 +159,10 @@ async function startHttp() {
   });
 
   const config = getConfig();
+  const mode = config?.url ? `remote: ${config.url}` : config?.dbPath ? `local: ${config.dbPath}` : '(not configured yet)';
   app.listen(port, () => {
     console.log(`SQLite MCP Server (HTTP) listening on port ${port}`);
-    console.log(
-      `Database: ${config ? config.dbPath : '(not configured yet)'}`
-    );
+    console.log(`Database: ${mode}`);
     console.log(`Tools available: ${TOOLS.length}`);
     console.log(`MCP endpoint: http://localhost:${port}/mcp`);
   });
@@ -166,11 +190,23 @@ async function main() {
   }
 }
 
+/**
+ * Smithery default export
+ */
 export default function createSmitheryServer(opts?: {
-  config?: { SQLITE_DB_PATH?: string; SQLITE_TIMEOUT?: number };
+  config?: {
+    SQLITE_DB_PATH?: string;
+    SQLITE_DB_URL?: string;
+    SQLITE_AUTH_TOKEN?: string;
+    SQLITE_TIMEOUT?: number;
+  };
 }) {
   if (opts?.config?.SQLITE_DB_PATH)
     process.env.SQLITE_DB_PATH = opts.config.SQLITE_DB_PATH;
+  if (opts?.config?.SQLITE_DB_URL)
+    process.env.SQLITE_DB_URL = opts.config.SQLITE_DB_URL;
+  if (opts?.config?.SQLITE_AUTH_TOKEN)
+    process.env.SQLITE_AUTH_TOKEN = opts.config.SQLITE_AUTH_TOKEN;
   if (opts?.config?.SQLITE_TIMEOUT)
     process.env.SQLITE_TIMEOUT = String(opts.config.SQLITE_TIMEOUT);
   const config = getConfig();

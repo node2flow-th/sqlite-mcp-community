@@ -1,0 +1,11 @@
+#:schema node_modules/wrangler/config-schema.json
+name = "sqlite-mcp-community"
+main = "dist/worker.js"
+compatibility_date = "2025-01-01"
+
+[observability]
+enabled = true
+
+[[routes]]
+pattern = "sqlite-mcp-community.node2flow.net"
+custom_domain = true

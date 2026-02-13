@@ -1,9 +1,11 @@
 {
   "name": "@node2flow/sqlite-mcp",
-  "version": "1.0.1",
-  "description": "MCP server for SQLite databases — query, manage schema, indexes, and optimize through 15 tools",
+  "version": "2.0.0",
+  "description": "MCP server for SQLite databases — local files (better-sqlite3) or remote Turso/libSQL via URL. 15 tools for query, schema, indexes, and optimization",
   "keywords": [
     "sqlite",
+    "turso",
+    "libsql",
     "mcp",
     "model-context-protocol",
     "database",
@@ -38,6 +40,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@libsql/client": "^0.14.0",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "better-sqlite3": "^11.0.0"
   },
@@ -45,7 +48,8 @@
     "@types/better-sqlite3": "^7.6.0",
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "wrangler": "^4.0.0"
   },
   "engines": {
     "node": ">=18"

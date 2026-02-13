@@ -1,23 +1,24 @@
 /**
- * Shared MCP Server — used by both stdio and HTTP modes
+ * Shared MCP Server — used by stdio, HTTP, and CF Worker modes
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { SqliteClient } from './client.js';
 import { TOOLS } from './tools.js';
-import type { ColumnDefinition } from './types.js';
+import type { SqliteClientInterface, ColumnDefinition } from './types.js';
 
 export interface SqliteMcpConfig {
-  dbPath: string;
+  dbPath?: string;
+  url?: string;
+  authToken?: string;
   readonly?: boolean;
   timeout?: number;
 }
 
-export function handleToolCall(
+export async function handleToolCall(
   toolName: string,
   args: Record<string, unknown>,
-  client: SqliteClient
+  client: SqliteClientInterface
 ) {
   switch (toolName) {
     // ========== Query & Execute ==========
@@ -46,7 +47,7 @@ export function handleToolCall(
 
     // ========== Schema Management ==========
     case 'sqlite_create_table': {
-      client.createTable(
+      await client.createTable(
         args.table as string,
         args.columns as ColumnDefinition[],
         args.ifNotExists as boolean | undefined
@@ -54,7 +55,7 @@ export function handleToolCall(
       return { success: true, table: args.table };
     }
     case 'sqlite_alter_table': {
-      client.alterTable(
+      await client.alterTable(
         args.table as string,
         args.action as string,
         args as Record<string, unknown>
@@ -62,7 +63,7 @@ export function handleToolCall(
       return { success: true, table: args.table, action: args.action };
     }
     case 'sqlite_drop_table': {
-      client.dropTable(
+      await client.dropTable(
         args.table as string,
         args.ifExists as boolean | undefined
       );
@@ -71,7 +72,7 @@ export function handleToolCall(
 
     // ========== Index Management ==========
     case 'sqlite_create_index': {
-      client.createIndex(
+      await client.createIndex(
         args.table as string,
         args.columns as string[],
         args.indexName as string | undefined,
@@ -87,7 +88,7 @@ export function handleToolCall(
       };
     }
     case 'sqlite_drop_index': {
-      client.dropIndex(
+      await client.dropIndex(
         args.indexName as string,
         args.ifExists as boolean | undefined
       );
@@ -107,13 +108,32 @@ export function handleToolCall(
   }
 }
 
+/**
+ * Create client from config — supports both local (better-sqlite3) and remote (@libsql/client)
+ */
+async function createClient(config: SqliteMcpConfig): Promise<SqliteClientInterface> {
+  if (config.url) {
+    const { LibSqlClient } = await import('./libsql-client.js');
+    return new LibSqlClient({ url: config.url, authToken: config.authToken });
+  }
+  if (config.dbPath) {
+    const { SqliteClient } = await import('./client.js');
+    return new SqliteClient({
+      dbPath: config.dbPath,
+      readonly: config.readonly,
+      timeout: config.timeout,
+    });
+  }
+  throw new Error('Either SQLITE_DB_URL or SQLITE_DB_PATH is required');
+}
+
 export function createServer(config?: SqliteMcpConfig) {
   const server = new McpServer({
     name: 'sqlite-mcp',
-    version: '1.0.0',
+    version: '2.0.0',
   });
 
-  let client: SqliteClient | null = null;
+  let client: SqliteClientInterface | null = null;
 
   // Register all 15 tools with annotations
   for (const tool of TOOLS) {
@@ -125,16 +145,12 @@ export function createServer(config?: SqliteMcpConfig) {
         annotations: tool.annotations,
       },
       async (args: Record<string, unknown>) => {
-        const dbPath =
-          config?.dbPath ||
-          (args as Record<string, unknown>).SQLITE_DB_PATH as string;
-
-        if (!dbPath) {
+        if (!config?.dbPath && !config?.url) {
           return {
             content: [
               {
                 type: 'text' as const,
-                text: 'Error: SQLITE_DB_PATH is required',
+                text: 'Error: Database not configured. Set SQLITE_DB_URL (remote) or SQLITE_DB_PATH (local).',
               },
             ],
             isError: true,
@@ -142,15 +158,23 @@ export function createServer(config?: SqliteMcpConfig) {
         }
 
         if (!client) {
-          client = new SqliteClient({
-            dbPath,
-            readonly: config?.readonly,
-            timeout: config?.timeout,
-          });
+          try {
+            client = await createClient(config);
+          } catch (error) {
+            return {
+              content: [
+                {
+                  type: 'text' as const,
+                  text: `Error connecting to database: ${error instanceof Error ? error.message : String(error)}`,
+                },
+              ],
+              isError: true,
+            };
+          }
         }
 
         try {
-          const result = handleToolCall(tool.name, args, client);
+          const result = await handleToolCall(tool.name, args, client);
           return {
             content: [
               {
@@ -238,6 +262,9 @@ export function createServer(config?: SqliteMcpConfig) {
   );
 
   // Register resources
+  const connectionType = config?.url ? 'remote' : config?.dbPath ? 'local' : 'not configured';
+  const connectionTarget = config?.url ?? config?.dbPath ?? '(not configured)';
+
   server.resource(
     'server-info',
     'sqlite://server-info',
@@ -254,9 +281,10 @@ export function createServer(config?: SqliteMcpConfig) {
           text: JSON.stringify(
             {
               name: 'sqlite-mcp',
-              version: '1.0.0',
+              version: '2.0.0',
               connected: !!config,
-              database: config?.dbPath ?? '(not configured)',
+              connection_type: connectionType,
+              database: connectionTarget,
               tools_available: TOOLS.length,
               tool_categories: {
                 query_and_execute: 3,
@@ -275,7 +303,6 @@ export function createServer(config?: SqliteMcpConfig) {
   );
 
   // Override tools/list handler to return raw JSON Schema with property descriptions.
-  // McpServer's Zod processing strips raw JSON Schema properties, returning empty schemas.
   (server as any).server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: TOOLS.map((tool) => ({
       name: tool.name,

@@ -1,6 +1,8 @@
 node_modules/
 dist/
+.wrangler/
 .smithery/
 .env
 .DS_Store
 *.db
+*.log

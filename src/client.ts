@@ -1,6 +1,6 @@
 /**
- * SQLite Client
- * Wraps better-sqlite3 with typed methods for all MCP tools
+ * SQLite Client (Local)
+ * Wraps better-sqlite3 with typed async methods matching SqliteClientInterface
  */
 
 import Database from 'better-sqlite3';
@@ -8,6 +8,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type {
   SqliteConfig,
+  SqliteClientInterface,
   ColumnInfo,
   IndexInfo,
   ForeignKeyInfo,
@@ -18,7 +19,7 @@ import type {
   ExecuteResult,
 } from './types.js';
 
-export class SqliteClient {
+export class SqliteClient implements SqliteClientInterface {
   private db: Database.Database;
   private config: SqliteConfig;
 
@@ -36,7 +37,7 @@ export class SqliteClient {
 
   // ========== Query & Execute ==========
 
-  query(sql: string, params?: unknown[]): QueryResult {
+  async query(sql: string, params?: unknown[]): Promise<QueryResult> {
     const stmt = this.db.prepare(sql);
     const rows = params
       ? (stmt.all(...params) as Record<string, unknown>[])
@@ -48,13 +49,13 @@ export class SqliteClient {
     return { columns, rows, rowCount: rows.length };
   }
 
-  execute(sql: string, params?: unknown[]): ExecuteResult {
+  async execute(sql: string, params?: unknown[]): Promise<ExecuteResult> {
     const stmt = this.db.prepare(sql);
     const result = params ? stmt.run(...params) : stmt.run();
     return { changes: result.changes, lastInsertRowid: result.lastInsertRowid };
   }
 
-  runScript(sql: string): { statementsRun: number } {
+  async runScript(sql: string): Promise<{ statementsRun: number }> {
     const transaction = this.db.transaction(() => {
       const statements = sql
         .split(';')
@@ -73,7 +74,7 @@ export class SqliteClient {
 
   // ========== Schema Inspection ==========
 
-  listTables(): TableInfo[] {
+  async listTables(): Promise<TableInfo[]> {
     const tables = this.db
       .prepare(
         "SELECT name, type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY name"
@@ -94,7 +95,7 @@ export class SqliteClient {
     });
   }
 
-  describeTable(table: string): { columns: ColumnInfo[]; sql: string } {
+  async describeTable(table: string): Promise<{ columns: ColumnInfo[]; sql: string }> {
     const columns = this.db
       .prepare(`PRAGMA table_info("${table}")`)
       .all() as ColumnInfo[];
@@ -104,13 +105,13 @@ export class SqliteClient {
     return { columns, sql: schemaRow?.sql ?? '' };
   }
 
-  listIndexes(table: string): IndexInfo[] {
+  async listIndexes(table: string): Promise<IndexInfo[]> {
     return this.db
       .prepare(`PRAGMA index_list("${table}")`)
       .all() as IndexInfo[];
   }
 
-  listForeignKeys(table: string): ForeignKeyInfo[] {
+  async listForeignKeys(table: string): Promise<ForeignKeyInfo[]> {
     return this.db
       .prepare(`PRAGMA foreign_key_list("${table}")`)
       .all() as ForeignKeyInfo[];
@@ -118,11 +119,11 @@ export class SqliteClient {
 
   // ========== Schema Management ==========
 
-  createTable(
+  async createTable(
     table: string,
     columns: ColumnDefinition[],
     ifNotExists?: boolean
-  ): void {
+  ): Promise<void> {
     const colDefs = columns.map((col) => {
       let def = `"${col.name}" ${col.type}`;
       if (col.primaryKey) def += ' PRIMARY KEY';
@@ -139,11 +140,11 @@ export class SqliteClient {
     );
   }
 
-  alterTable(
+  async alterTable(
     table: string,
     action: string,
     params: Record<string, unknown>
-  ): void {
+  ): Promise<void> {
     switch (action) {
       case 'add_column': {
         let sql = `ALTER TABLE "${table}" ADD COLUMN "${params.column}" ${params.type}`;
@@ -169,20 +170,20 @@ export class SqliteClient {
     }
   }
 
-  dropTable(table: string, ifExists?: boolean): void {
+  async dropTable(table: string, ifExists?: boolean): Promise<void> {
     const exists = ifExists ? ' IF EXISTS' : '';
     this.db.exec(`DROP TABLE${exists} "${table}"`);
   }
 
   // ========== Index Management ==========
 
-  createIndex(
+  async createIndex(
     table: string,
     columns: string[],
     indexName?: string,
     unique?: boolean,
     ifNotExists?: boolean
-  ): void {
+  ): Promise<void> {
     const name = indexName || `idx_${table}_${columns.join('_')}`;
     const uniqueStr = unique ? ' UNIQUE' : '';
     const exists = ifNotExists ? ' IF NOT EXISTS' : '';
@@ -192,14 +193,14 @@ export class SqliteClient {
     );
   }
 
-  dropIndex(indexName: string, ifExists?: boolean): void {
+  async dropIndex(indexName: string, ifExists?: boolean): Promise<void> {
     const exists = ifExists ? ' IF EXISTS' : '';
     this.db.exec(`DROP INDEX${exists} "${indexName}"`);
   }
 
   // ========== Database Management ==========
 
-  getInfo(): DatabaseInfo {
+  async getInfo(): Promise<DatabaseInfo> {
     const pageCount = (
       this.db.prepare('PRAGMA page_count').get() as Record<string, unknown>
     ).page_count as number;
@@ -245,7 +246,7 @@ export class SqliteClient {
     };
   }
 
-  vacuum(): { sizeBefore: number; sizeAfter: number } {
+  async vacuum(): Promise<{ sizeBefore: number; sizeAfter: number }> {
     let sizeBefore = 0;
     try {
       sizeBefore = fs.statSync(this.config.dbPath).size;
@@ -262,7 +263,7 @@ export class SqliteClient {
     return { sizeBefore, sizeAfter };
   }
 
-  integrityCheck(): { ok: boolean; results: string[] } {
+  async integrityCheck(): Promise<{ ok: boolean; results: string[] }> {
     const results = this.db
       .prepare('PRAGMA integrity_check')
       .all() as { integrity_check: string }[];
