@@ -2,13 +2,14 @@
  * Cloudflare Worker entry — Stateless Streamable HTTP MCP
  *
  * Supports remote databases only (SQLITE_DB_URL) — CF Workers have no local filesystem.
- * Each request creates a new transport + server.
+ * Directly imports LibSqlClient to avoid bundling better-sqlite3.
  */
 
 import {
   WebStandardStreamableHTTPServerTransport,
 } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 
+import { LibSqlClient } from './libsql-client.js';
 import { createServer } from './server.js';
 import { TOOLS } from './tools.js';
 
@@ -78,15 +79,20 @@ export default {
       ));
     }
 
-    const config = { url: dbUrl, authToken: authToken || undefined };
-
     try {
       const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
         enableJsonResponse: true,
       });
 
-      const server = createServer(config);
+      const server = createServer({
+        clientFactory: async () => new LibSqlClient({
+          url: dbUrl,
+          authToken: authToken || undefined,
+        }),
+        connectionType: 'remote',
+        connectionTarget: dbUrl,
+      });
       await server.connect(transport);
 
       const response = await transport.handleRequest(request);

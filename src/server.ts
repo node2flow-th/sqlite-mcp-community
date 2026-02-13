@@ -1,5 +1,8 @@
 /**
  * Shared MCP Server — used by stdio, HTTP, and CF Worker modes
+ *
+ * Accepts a clientFactory function to avoid bundling both clients.
+ * Worker.ts passes LibSqlClient factory, index.ts passes SqliteClient or LibSqlClient factory.
  */
 
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
@@ -7,12 +10,10 @@ import { ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { TOOLS } from './tools.js';
 import type { SqliteClientInterface, ColumnDefinition } from './types.js';
 
-export interface SqliteMcpConfig {
-  dbPath?: string;
-  url?: string;
-  authToken?: string;
-  readonly?: boolean;
-  timeout?: number;
+export interface ServerOptions {
+  clientFactory?: () => Promise<SqliteClientInterface>;
+  connectionType?: string;
+  connectionTarget?: string;
 }
 
 export async function handleToolCall(
@@ -108,26 +109,7 @@ export async function handleToolCall(
   }
 }
 
-/**
- * Create client from config — supports both local (better-sqlite3) and remote (@libsql/client)
- */
-async function createClient(config: SqliteMcpConfig): Promise<SqliteClientInterface> {
-  if (config.url) {
-    const { LibSqlClient } = await import('./libsql-client.js');
-    return new LibSqlClient({ url: config.url, authToken: config.authToken });
-  }
-  if (config.dbPath) {
-    const { SqliteClient } = await import('./client.js');
-    return new SqliteClient({
-      dbPath: config.dbPath,
-      readonly: config.readonly,
-      timeout: config.timeout,
-    });
-  }
-  throw new Error('Either SQLITE_DB_URL or SQLITE_DB_PATH is required');
-}
-
-export function createServer(config?: SqliteMcpConfig) {
+export function createServer(opts?: ServerOptions) {
   const server = new McpServer({
     name: 'sqlite-mcp',
     version: '2.0.0',
@@ -145,7 +127,7 @@ export function createServer(config?: SqliteMcpConfig) {
         annotations: tool.annotations,
       },
       async (args: Record<string, unknown>) => {
-        if (!config?.dbPath && !config?.url) {
+        if (!opts?.clientFactory) {
           return {
             content: [
               {
@@ -159,7 +141,7 @@ export function createServer(config?: SqliteMcpConfig) {
 
         if (!client) {
           try {
-            client = await createClient(config);
+            client = await opts.clientFactory();
           } catch (error) {
             return {
               content: [
@@ -262,8 +244,8 @@ export function createServer(config?: SqliteMcpConfig) {
   );
 
   // Register resources
-  const connectionType = config?.url ? 'remote' : config?.dbPath ? 'local' : 'not configured';
-  const connectionTarget = config?.url ?? config?.dbPath ?? '(not configured)';
+  const connectionType = opts?.connectionType ?? 'not configured';
+  const connectionTarget = opts?.connectionTarget ?? '(not configured)';
 
   server.resource(
     'server-info',
@@ -282,7 +264,7 @@ export function createServer(config?: SqliteMcpConfig) {
             {
               name: 'sqlite-mcp',
               version: '2.0.0',
-              connected: !!config,
+              connected: !!opts?.clientFactory,
               connection_type: connectionType,
               database: connectionTarget,
               tools_available: TOOLS.length,

@@ -22,39 +22,52 @@ import {
 import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 
-import { createServer } from './server.js';
+import { createServer, type ServerOptions } from './server.js';
 import { TOOLS } from './tools.js';
+import type { SqliteClientInterface } from './types.js';
 
-function getConfig() {
+function getServerOptions(): ServerOptions | undefined {
   const url = process.env.SQLITE_DB_URL;
   const dbPath = process.env.SQLITE_DB_PATH;
 
   if (url) {
+    const authToken = process.env.SQLITE_AUTH_TOKEN;
     return {
-      url,
-      authToken: process.env.SQLITE_AUTH_TOKEN,
+      clientFactory: async (): Promise<SqliteClientInterface> => {
+        const { LibSqlClient } = await import('./libsql-client.js');
+        return new LibSqlClient({ url, authToken });
+      },
+      connectionType: 'remote',
+      connectionTarget: url,
     };
   }
 
   if (dbPath) {
+    const timeout = process.env.SQLITE_TIMEOUT
+      ? parseInt(process.env.SQLITE_TIMEOUT, 10)
+      : undefined;
     return {
-      dbPath,
-      timeout: process.env.SQLITE_TIMEOUT
-        ? parseInt(process.env.SQLITE_TIMEOUT, 10)
-        : undefined,
+      clientFactory: async (): Promise<SqliteClientInterface> => {
+        const { SqliteClient } = await import('./client.js');
+        return new SqliteClient({ dbPath, timeout });
+      },
+      connectionType: 'local',
+      connectionTarget: dbPath,
     };
   }
 
-  return null;
+  return undefined;
 }
 
 async function startStdio() {
-  const config = getConfig();
-  const server = createServer(config ?? undefined);
+  const opts = getServerOptions();
+  const server = createServer(opts);
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  const mode = config?.url ? `remote: ${config.url}` : config?.dbPath ? `local: ${config.dbPath}` : '(not configured yet)';
+  const mode = opts?.connectionTarget
+    ? `${opts.connectionType}: ${opts.connectionTarget}`
+    : '(not configured yet)';
   console.error('SQLite MCP Server running on stdio');
   console.error(`Database: ${mode}`);
   console.error(`Tools available: ${TOOLS.length}`);
@@ -99,8 +112,8 @@ async function startHttp() {
           }
         };
 
-        const config = getConfig();
-        const server = createServer(config ?? undefined);
+        const opts = getServerOptions();
+        const server = createServer(opts);
         await server.connect(transport);
         await transport.handleRequest(req, res, req.body);
         return;
@@ -158,8 +171,10 @@ async function startHttp() {
     });
   });
 
-  const config = getConfig();
-  const mode = config?.url ? `remote: ${config.url}` : config?.dbPath ? `local: ${config.dbPath}` : '(not configured yet)';
+  const opts = getServerOptions();
+  const mode = opts?.connectionTarget
+    ? `${opts.connectionType}: ${opts.connectionTarget}`
+    : '(not configured yet)';
   app.listen(port, () => {
     console.log(`SQLite MCP Server (HTTP) listening on port ${port}`);
     console.log(`Database: ${mode}`);
@@ -209,8 +224,7 @@ export default function createSmitheryServer(opts?: {
     process.env.SQLITE_AUTH_TOKEN = opts.config.SQLITE_AUTH_TOKEN;
   if (opts?.config?.SQLITE_TIMEOUT)
     process.env.SQLITE_TIMEOUT = String(opts.config.SQLITE_TIMEOUT);
-  const config = getConfig();
-  return createServer(config ?? undefined);
+  return createServer(getServerOptions());
 }
 
 main().catch((error) => {
