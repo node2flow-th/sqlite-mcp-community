@@ -2,6 +2,10 @@
 name = "sqlite-mcp-community"
 main = "dist/worker.js"
 compatibility_date = "2025-01-01"
+workers_dev = true
+
+[placement]
+mode = "smart"
 
 [observability]
 enabled = true
